@@ -8,13 +8,15 @@
 #include "ws2tcpip.h"
 #include <string.h>
 #include "..//..//libcrc-master/src/crc16.c"
-#define TARGET_IP	"127.0.0.1"
 
-#define BUFFERS_LEN 1024
+#define RECEIVER
+
+#define TARGET_IP	"127.0.0.1"
 
 #define TARGET_PORT 8888
 #define LOCAL_PORT 5555
 
+#define BUFFERS_LEN 1024
 
 void InitWinsock()
 {

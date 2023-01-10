@@ -11,15 +11,16 @@
 #include <iostream>
 #include "..//..//libcrc-master/src/crc16.c"
 
-#define TARGET_IP	"127.0.0.1"
-
-#define BUFFERS_LEN 1024
 
 #define SENDER
+
+#define TARGET_IP	"127.0.0.1"
 
 #define TARGET_PORT 5555
 #define LOCAL_PORT 8888
 
+
+#define BUFFERS_LEN 1024
 
 
 void InitWinsock()
@@ -29,16 +30,39 @@ void InitWinsock()
 }
 
 bool recieve_ack(SOCKET socket, char *buffer_rx, sockaddr_in dest ) {
+	fd_set readfds, masterfds;
+	struct timeval timeout;
+	timeout.tv_sec = 1;
+	timeout.tv_usec = 0;
+	FD_ZERO(&masterfds);
+	FD_SET(socket, &masterfds);
+	memcpy(&readfds, &masterfds, sizeof(fd_set));
+
 	int destlen = sizeof(dest);
 	memset(buffer_rx, 0, sizeof buffer_rx);
 	printf("WAITING FOR ACK\n");
-	if (recvfrom(socket, buffer_rx, sizeof(buffer_rx), 0, (sockaddr*)&dest, &destlen) == SOCKET_ERROR) {
-		printf("Socket error\n");
-		getchar();
+
+	if (select(socket + 1, &readfds, NULL, NULL, &timeout) < 0)
+	{
+		perror("on select");
 		exit(1);
 	}
-	else {
-		printf("Received ACK\n");
+	if (FD_ISSET(socket, &readfds))
+	{
+		if (recvfrom(socket, buffer_rx, sizeof(buffer_rx), 0, (sockaddr*)&dest, &destlen) == SOCKET_ERROR) {
+			printf("Socket error\n");
+			getchar();
+			exit(1);
+		}
+		else {
+			printf("Received ACK\n");
+			return 0;
+		}
+	}
+	else
+	{
+		printf("Socket timeout\n");
+		return 1;
 	}
 }
 int add_crc(char* buffer,bool isData,int buffer_len) {
@@ -128,7 +152,7 @@ int main()
 	memset(buffer_tx, 0, sizeof buffer_tx);
 	memset(buffer, 0x00, sizeof buffer);
 
-	if (!recieve_ack(socketS, buffer_rx, addrDest)) {
+	while (recieve_ack(socketS, buffer_rx, addrDest)) {
 		sendto(socketS, buffer_tx, strlen(buffer_tx), 0, (sockaddr*)&addrDest, sizeof(addrDest));
 		printf("Resending START \n");
 		memset(buffer_tx, 0, sizeof buffer_tx);
@@ -143,7 +167,7 @@ int main()
 	memset(buffer_tx, 0, sizeof buffer_tx);
 	memset(buffer, 0x00, sizeof buffer);
 
-	if (!recieve_ack(socketS, buffer_rx, addrDest)) {
+	while (recieve_ack(socketS, buffer_rx, addrDest)) {
 		sendto(socketS, buffer_tx, strlen(buffer_tx), 0, (sockaddr*)&addrDest, sizeof(addrDest));
 		printf("Resending file name\n");
 		memset(buffer_tx, 0, sizeof buffer_tx);
@@ -161,16 +185,16 @@ int main()
 	strncpy(buffer_tx, buffer, BUFFERS_LEN);
 	//printf("Buffer is %s\n", buffer_tx);
 	sendto(socketS, buffer_tx, strlen(buffer_tx), 0, (sockaddr*)&addrDest, sizeof(addrDest));
-	memset(buffer_tx, 0, sizeof buffer_tx);
-	memset(buffer, 0x00, sizeof buffer);
 
-	if (!recieve_ack(socketS, buffer_rx, addrDest)) {
+	while (recieve_ack(socketS, buffer_rx, addrDest)) {
 		sendto(socketS, buffer_tx, strlen(buffer_tx), 0, (sockaddr*)&addrDest, sizeof(addrDest));
 		printf("Resending file size %dB\n", file_size);
 		memset(buffer_tx, 0, sizeof buffer_tx);
 		memset(buffer, 0x00, sizeof buffer);
 	}
 
+	memset(buffer_tx, 0, sizeof buffer_tx);
+	memset(buffer, 0x00, sizeof buffer);
 
 	//START SENDING FILE DATA
 
@@ -202,15 +226,17 @@ int main()
 		int sent = sendto(socketS, buffer_tx, curr_length + bytes_read + added - 2, 0, (sockaddr*)&addrDest, sizeof(addrDest));
 		printf("Sending DATA, SIZE: %d bytes\n", bytes_read, buffer_tx);
 
-		memset(buffer_tx, 0, sizeof buffer_tx);
-		memset(buffer, 0x00, sizeof buffer);
+		
 
-		if (!recieve_ack(socketS, buffer_rx, addrDest)) {
+		while (recieve_ack(socketS, buffer_rx, addrDest)) {
 			sendto(socketS, buffer_tx, curr_length + bytes_read + added - 2, 0, (sockaddr*)&addrDest, sizeof(addrDest));
 			printf("Resending DATA, SIZE %d bytes\n", max_index);
 			memset(buffer_tx, 0, sizeof buffer_tx);
 			memset(buffer, 0x00, sizeof buffer);
 		}
+
+		memset(buffer_tx, 0, sizeof buffer_tx);
+		memset(buffer, 0x00, sizeof buffer);
 
 		bytes_sent += bytes_read;
 
